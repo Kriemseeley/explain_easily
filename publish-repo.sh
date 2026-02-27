@@ -154,10 +154,10 @@ else
 fi
 
 # 复制 apt 仓库内容到工作目录
+# 注意：GPG 公钥已在第4步直接导出到 $ORIG_DIR，无需再次复制
 info "拷贝仓库文件到工作目录..."
 cp -r "$WORK_DIR/pool"  "$ORIG_DIR/"
 cp -r "$WORK_DIR/dists" "$ORIG_DIR/"
-cp "$GPG_KEY_FILE"      "$ORIG_DIR/"
 
 # 生成 index.html
 PAGES_URL="https://${GITHUB_USER}.github.io/${GITHUB_REPO}"
@@ -185,7 +185,7 @@ HTMLEOF
 # 提交并推送
 git -C "$ORIG_DIR" add .
 git -C "$ORIG_DIR" commit -m "ci: 发布 apt 仓库 $(date +'%Y-%m-%d %H:%M')" --allow-empty
-git -C "$ORIG_DIR" push origin "$BRANCH" --force
+git -C "$ORIG_DIR" push -u origin "$BRANCH" --force
 
 success "apt 仓库已推送到 ${BRANCH} 分支！"
 
