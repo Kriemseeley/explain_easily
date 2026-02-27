@@ -1,0 +1,32 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: Kriemseeley
+Label: explain-tool
+Suite: stable
+Codename: stable
+Components: main
+Architectures: all
+Description: explain-tool unofficial apt repository
+MD5Sum:
+ a3fb797bd49cc5603962328ff421051c 927 main/binary-all/Packages
+ 02c2b092c9daeb66de72abe51945bf0b 627 main/binary-all/Packages.gz
+SHA256:
+ b75a521ac35f706c67fd15938a611a5dc4351cd38781493cbe15b5e1ca90c009 927 main/binary-all/Packages
+ 5c8de6a04a89074dbf2e7ac31b829ac5bba61eac660d6d8ef655a75f83be653b 627 main/binary-all/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEIE4wy1tynhO1muN2LIl1ifLP4RwFAmmhrGEACgkQLIl1ifLP
+4RzxGhAAmrLs9HmbRyZPWkMb26HBdRfASdsKkb+RXKeCrdzHa00u9hu5ATxBMBIW
+JWSd+paQy/+cqH6YvtaFCX8+GpzNdMyzf722/C5Zt7Tvojt4bGYbYXrjdT/x3V1H
+tZU1BoXGZBAx7v/qM1UvUw+t8kB1y1QjalO27aX+OUDqo3BBvmn0lBNS3MyE5mHg
+IJCmlhfhiNBfX2QXJCdn/b80J2ya7EyXhNcR7fcB0I0UN3K4iVp2ANKdBwAt311l
+itpebxnNKu8iRwXis1u/MOyVPVFhMr9lNOR5XMXLFIGKghjMbVKYAM8kn+/VuOWo
+omI7htheQBnQYBwoq8jMmWeQx5UEDSgHrCzeff8d/Wrme6vFokSbICxITlXDLZxR
+wEh1l5oWxT4DcoMPIu5Crb0OBSEn5iKbcHVxlGb8Zo3Gmi0Arqm+ZkHf+yOOv5kf
+bZpSIqBSxK/vRoERDaEtM9tmT7VP2gluHgXTt85aGrxUfnNQRbFyGE1DEzNrvQI1
+deyFJB3tbCAKURY0k/z7dBLBAh4YVF444+aDm9AhvQ3CMVYt3z8OBRuPhMoEtS3Y
+ymgPFMjhPmRgqo+vkBnqhTKHkP4PNRzdmLSFXDDdZNylV+fwYEJsdunSx5cZxWT0
+7+OO4ugb0HnDOxCSSat9NIXR3Zy0hp+O/Pk3qbNLV8344u5D2II=
+=80VU
+-----END PGP SIGNATURE-----

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><title>explain-tool apt repository</title></head>
+<body>
+<h1>explain-tool apt 仓库</h1>
+<p>一键安装命令：</p>
+<pre>
+# 1. 添加 GPG 公钥
+curl -fsSL https://Kriemseeley.github.io/explain_easily/explain-tool.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/explain-tool.gpg
+
+# 2. 添加软件源
+echo "deb [signed-by=/etc/apt/keyrings/explain-tool.gpg arch=all] https://Kriemseeley.github.io/explain_easily stable main" | sudo tee /etc/apt/sources.list.d/explain-tool.list
+
+# 3. 安装
+sudo apt update &amp;&amp; sudo apt install explain-tool
+</pre>
+</body>
+</html>

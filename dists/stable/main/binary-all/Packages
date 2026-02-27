@@ -1,0 +1,25 @@
+Package: explain-tool
+Version: 1.1.0-1
+Architecture: all
+Maintainer: Kriemseeley <your-email@example.com>
+Installed-Size: 43
+Depends: python3 (>= 3.10)
+Recommends: python3-rich
+Filename: pool/main/explain-tool_1.1.0-1_all.deb
+Size: 11632
+MD5sum: 871751776e36417c82bb0a1277c188ef
+SHA1: 9b455b44729653a91cad5ef4714679e4fd65b1f7
+SHA256: 30caf654f57f248812e1d317a13d944f40dc659ef439cad0d1b9c7e2b05d9d3e
+Section: utils
+Priority: optional
+Homepage: https://github.com/Kriemseeley/explain_easily
+Description: Linux/Kali command explanation tool with dual perspectives
+ A command-line tool designed for Kali Linux and Ubuntu that explains
+ the meaning and usage of shell commands from two angles:
+ .
+  - General perspective (sysadmin / DevOps best practices)
+  - Security perspective (pentesting / CTF / privilege escalation)
+ .
+ Supports OpenAI, DeepSeek, and local Ollama backends.
+ Bilingual output: Chinese (zh) and English (en).
+

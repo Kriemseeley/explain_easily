@@ -1,0 +1,13 @@
+Origin: Kriemseeley
+Label: explain-tool
+Suite: stable
+Codename: stable
+Components: main
+Architectures: all
+Description: explain-tool unofficial apt repository
+MD5Sum:
+ a3fb797bd49cc5603962328ff421051c 927 main/binary-all/Packages
+ 02c2b092c9daeb66de72abe51945bf0b 627 main/binary-all/Packages.gz
+SHA256:
+ b75a521ac35f706c67fd15938a611a5dc4351cd38781493cbe15b5e1ca90c009 927 main/binary-all/Packages
+ 5c8de6a04a89074dbf2e7ac31b829ac5bba61eac660d6d8ef655a75f83be653b 627 main/binary-all/Packages.gz

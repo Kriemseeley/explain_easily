@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+# 安装后确保 rich 库可用
+if command -v pip3 >/dev/null 2>&1; then
+    pip3 install rich --quiet --break-system-packages 2>/dev/null \
+        || pip3 install rich --quiet 2>/dev/null \
+        || true
+fi
+
+echo "explain-tool 安装完成！"
+echo "  首次使用请运行：explain --config"
+echo "  示例：explain chmod u+s /bin/bash"

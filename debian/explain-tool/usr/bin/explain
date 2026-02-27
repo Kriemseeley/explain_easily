@@ -1,0 +1,885 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+explain - 专为 Kali/Ubuntu 设计的命令行解释工具
+支持安全（渗透测试/CTF/红队）与通用（运维/管理）双视角
+
+用法:
+  explain <command>              # 同时输出安全 + 通用两种视角
+  explain -s <command>           # 仅安全视角（渗透/CTF/PrivEsc）
+  explain -g <command>           # 仅通用视角（系统管理/运维）
+  explain -n <command>           # 忽略缓存强制重新查询
+  explain --config               # 运行配置向导
+  explain --clear-cache          # 清空本地缓存
+  explain --uninstall            # 交互式卸载工具
+
+示例:
+  explain chmod u+s /bin/bash
+  explain -s find / -perm -4000 2>/dev/null
+  explain -g tar -czf backup.tar.gz /etc
+  explain -sg nmap -sV -O 192.168.1.1
+"""
+
+import argparse
+import json
+import os
+import sys
+import hashlib
+import shutil
+import urllib.request
+import urllib.error
+from pathlib import Path
+from typing import Optional, Dict, Any
+
+# ─────────────────────────────────────────────────────────────
+# 配置管理
+# ─────────────────────────────────────────────────────────────
+
+CONFIG_DIR  = Path.home() / ".config" / "explain-tool"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+CACHE_DIR   = CONFIG_DIR / "cache"
+
+DEFAULT_CONFIG: Dict[str, Any] = {
+    "backend":      "openai",        # openai | ollama | deepseek | custom
+    "api_key":      "",
+    "api_base":     "https://api.openai.com/v1",
+    "model":        "gpt-4o-mini",
+    "language":     "zh",            # zh（中文）| en（English）
+    "cache":        True,
+    "ollama_host":  "http://localhost:11434",
+    "ollama_model": "qwen2.5:7b",
+}
+
+SUPPORTED_LANGUAGES = {
+    "zh": "中文",
+    "en": "English",
+}
+
+# 快速模式 token 上限（越小越快）
+QUICK_MAX_TOKENS = 300
+
+# ─────────────────────────────────────────────────────────────
+# 提示词
+# ─────────────────────────────────────────────────────────────
+
+SYSTEM_BOTH = """\
+你是一名同时精通 Linux 系统管理和网络安全（渗透测试/CTF）的专家顾问。
+用户会给你一条 Linux/Kali 命令（可能带参数和目标路径），请严格按以下 Markdown 结构回复：
+
+## 📋 命令概览
+（1-2 句话描述该命令的核心功能）
+
+## 🔩 参数解析
+（用表格或列表，逐项解释命令中的每个选项 / 参数 / 目标路径）
+
+## 🔧 通用视角
+（从系统管理、日常运维、开发角度分析典型用途、注意事项、最佳实践）
+
+## 🔴 安全视角
+（从渗透测试 / 权限提升 / CTF / 横向移动 / 持久化 / 防御检测等角度深入分析，需明确标注风险等级）
+
+## 💡 使用示例
+（给出 3 个典型场景示例，安全与通用各有涉及）
+
+---
+全部使用中文回答，语言精准，适合终端阅读。"""
+
+SYSTEM_SECURITY = """\
+你是一名经验丰富的红队渗透测试工程师，专注于 Linux/Kali 命令的安全应用与漏洞利用。
+用户给你一条命令，请从以下安全角度深入分析（全部用中文，专业精准）：
+
+## 📋 命令概览
+（核心功能简述，一句话）
+
+## 🔴 安全深度分析
+
+### 攻击面与利用价值
+- 权限提升（Privilege Escalation）思路与利用条件
+- 横向移动 / 信息收集 / 持久化可能性
+- GTFOBins 收录情况（如适用，给出具体利用命令）
+
+### CTF & 真实渗透场景
+（描述典型利用链、绕过手法、常见出题场景）
+
+### 风险等级评估
+| 维度 | 评级 | 说明 |
+|------|------|------|
+| 权限提升风险 | 🔴高/🟡中/🟢低 | ... |
+| 持久化风险   | 🔴高/🟡中/🟢低 | ... |
+| 信息泄露风险 | 🔴高/🟡中/🟢低 | ... |
+
+## 🛡️ 防御与检测（蓝队视角）
+（如何监控、告警或缓解此命令的滥用，包括 auditd 规则、SIEM 告警思路等）
+
+## 💡 利用示例
+（2-3 个红队 / CTF 真实或经典场景示例）
+
+---
+专业精准，适合红蓝对抗参考。"""
+
+SYSTEM_GENERAL = """\
+你是一名资深 Linux 系统管理员和 DevOps 工程师。
+用户给你一条命令，请从以下角度系统解释（全部用中文，通俗易懂）：
+
+## 📋 命令概览
+（核心功能简述，1-2 句话）
+
+## 🔩 参数解析
+（用表格列出每个参数 / 选项的含义）
+
+## 🔧 使用场景
+（日常运维、开发、脚本自动化中的典型用途，至少 3 个场景）
+
+## ⚠️ 注意事项
+（常见错误、性能陷阱、权限要求、跨发行版差异等）
+
+## 🔄 类似命令对比
+（与功能相近命令的简要对比，帮助选择）
+
+## 💡 使用示例
+（3 个由浅入深的典型示例）
+
+---
+语言通俗，适合有一定 Linux 基础的工程师阅读。"""
+
+# ── 快速模式提示词（仅输出核心作用，不含结构化格式）─────────
+
+SYSTEM_QUICK_ZH = """\
+你是一个 Linux/Kali 命令速查助手。
+用户给你一条命令，请用 **1-3 句纯中文** 直接说明它的核心作用。
+要求：
+- 不需要任何 Markdown 标题或分节
+- 如果该命令有明显的安全风险，在末尾用【⚠️ 安全风险：…】简短提示
+- 语言精准简洁，像字典释义一样直接"""
+
+SYSTEM_QUICK_EN = """\
+You are a Linux/Kali command quick-reference assistant.
+Given a command, respond with **1-3 plain English sentences** describing its core purpose.
+Rules:
+- No Markdown headers or sections
+- If the command has notable security implications, append 【⚠️ Security: …】briefly
+- Be concise and precise, like a dictionary definition"""
+
+# ── English prompts ───────────────────────────────────────────
+
+SYSTEM_BOTH_EN = """\
+You are an expert consultant proficient in both Linux system administration and cybersecurity (penetration testing / CTF).
+The user will provide a Linux/Kali command (possibly with flags and target paths).
+Reply strictly in the following Markdown structure, in English:
+
+## 📋 Overview
+(1-2 sentences describing the core function of the command)
+
+## 🔩 Parameter Breakdown
+(Table or list explaining each option / flag / argument in the command)
+
+## 🔧 General Perspective
+(Typical uses from a sysadmin, DevOps, or developer angle — best practices and caveats)
+
+## 🔴 Security Perspective
+(Deep analysis from a pentesting / privilege escalation / CTF / lateral movement / persistence / blue-team detection angle — include risk level)
+
+## 💡 Usage Examples
+(3 typical examples covering both security and general scenarios)
+
+---
+Respond entirely in English. Be precise and terminal-friendly."""
+
+SYSTEM_SECURITY_EN = """\
+You are an experienced red-team penetration tester focused on the security applications and exploitation of Linux/Kali commands.
+Analyze the provided command from the following security angles, entirely in English:
+
+## 📋 Overview
+(One-sentence core function summary)
+
+## 🔴 Security Deep Dive
+
+### Attack Surface & Exploitation Value
+- Privilege Escalation (PrivEsc) potential and conditions
+- Lateral movement / reconnaissance / persistence possibilities
+- GTFOBins listing (if applicable — provide exact exploit commands)
+
+### CTF & Real-World Pentest Scenarios
+(Describe typical exploit chains, bypass techniques, common CTF patterns)
+
+### Risk Assessment
+| Dimension | Level | Notes |
+|-----------|-------|-------|
+| Privilege Escalation | 🔴High/🟡Med/🟢Low | ... |
+| Persistence Risk     | 🔴High/🟡Med/🟢Low | ... |
+| Information Leakage  | 🔴High/🟡Med/🟢Low | ... |
+
+## 🛡️ Defense & Detection (Blue-Team View)
+(How to monitor, alert on, or mitigate abuse of this command — auditd rules, SIEM logic, etc.)
+
+## 💡 Exploitation Examples
+(2-3 red-team / CTF classic or real-world examples)
+
+---
+Professional and precise, suitable for red/blue team reference."""
+
+SYSTEM_GENERAL_EN = """\
+You are a senior Linux system administrator and DevOps engineer.
+Explain the provided command from the following angles, entirely in English:
+
+## 📋 Overview
+(1-2 sentence core function summary)
+
+## 🔩 Parameter Breakdown
+(Table listing each flag / option and its meaning)
+
+## 🔧 Use Cases
+(Typical uses in daily operations, development, and shell scripting — at least 3 scenarios)
+
+## ⚠️ Caveats & Best Practices
+(Common mistakes, performance pitfalls, permission requirements, cross-distro differences)
+
+## 🔄 Similar Commands
+(Brief comparison with functionally similar commands to help choose the right tool)
+
+## 💡 Usage Examples
+(3 examples ranging from basic to advanced)
+
+---
+Clear and accessible for engineers with some Linux experience."""
+
+# ─────────────────────────────────────────────────────────────
+# 彩色输出（rich 可选，自动降级为纯文本）
+# ─────────────────────────────────────────────────────────────
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.markdown import Markdown
+    console = Console()
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
+    console = None
+
+
+def _print_header(command: str, mode: str, lang: str = "zh"):
+    # 快速模式用轻量单行样式
+    if mode == "quick":
+        if HAS_RICH:
+            console.print(f"\n[bold cyan]⚡[/bold cyan] [bold yellow]{command}[/bold yellow]")
+        else:
+            print(f"\n⚡ {command}")
+        return
+
+    mode_labels_zh = {
+        "both":     "全视角（通用 + 安全）",
+        "security": "🔴 安全视角（渗透 / CTF / 红队）",
+        "general":  "🔧 通用视角（系统管理 / 运维）",
+    }
+    mode_labels_en = {
+        "both":     "Full View (General + Security)",
+        "security": "🔴 Security View (Pentest / CTF / Red Team)",
+        "general":  "🔧 General View (Sysadmin / DevOps)",
+    }
+    labels = mode_labels_en if lang == "en" else mode_labels_zh
+    label = labels.get(mode, mode)
+    cmd_prefix = "Command" if lang == "en" else "命令"
+    mode_prefix = "Mode" if lang == "en" else "模式"
+    if HAS_RICH:
+        console.print()
+        console.print(Panel(
+            f"[bold yellow]$ {command}[/bold yellow]\n[dim]{label}[/dim]",
+            title="[bold cyan]🔍 Explain Tool[/bold cyan]",
+            border_style="bright_blue",
+            padding=(0, 2),
+        ))
+    else:
+        sep = "=" * 60
+        print(f"\n{sep}")
+        print(f"  {cmd_prefix}: {command}")
+        print(f"  {mode_prefix}: {label}")
+        print(f"{sep}\n")
+
+
+def _print_result(content: str, quick: bool = False):
+    if quick:
+        # 快速模式：纯文本，不渲染 Markdown
+        if HAS_RICH:
+            console.print(f"[white]{content}[/white]\n")
+        else:
+            print(content)
+            print()
+        return
+    if HAS_RICH:
+        console.print(Markdown(content))
+        console.print()
+    else:
+        print(content)
+        print()
+
+
+def _print_error(msg: str):
+    if HAS_RICH:
+        console.print(f"[bold red]✗ 错误：[/bold red]{msg}")
+    else:
+        print(f"[错误] {msg}", file=sys.stderr)
+
+
+def _print_info(msg: str):
+    if HAS_RICH:
+        console.print(f"[dim]  ⏳ {msg}[/dim]")
+    else:
+        print(f"  >> {msg}")
+
+
+def _print_success(msg: str):
+    if HAS_RICH:
+        console.print(f"[green]  ✓ {msg}[/green]")
+    else:
+        print(f"  [OK] {msg}")
+
+
+# ─────────────────────────────────────────────────────────────
+# 配置
+# ─────────────────────────────────────────────────────────────
+
+def load_config() -> Dict[str, Any]:
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            merged = DEFAULT_CONFIG.copy()
+            merged.update(cfg)
+            return merged
+        except Exception:
+            pass
+    return DEFAULT_CONFIG.copy()
+
+
+def save_config(cfg: Dict[str, Any]):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+
+def run_config_wizard():
+    cfg = load_config()
+
+    if HAS_RICH:
+        console.print(Panel("[bold]Explain Tool — 配置向导[/bold]", border_style="cyan"))
+    else:
+        print("\n=== Explain Tool 配置向导 ===\n")
+
+    backends = ["openai", "ollama", "deepseek", "custom"]
+    print("\n可用后端：")
+    for i, b in enumerate(backends, 1):
+        marker = " ← 当前" if b == cfg["backend"] else ""
+        print(f"  {i}. {b}{marker}")
+
+    choice = input(f"\n选择后端编号 [回车保持不变]: ").strip()
+    if choice.isdigit() and 1 <= int(choice) <= len(backends):
+        cfg["backend"] = backends[int(choice) - 1]
+
+    if cfg["backend"] == "ollama":
+        host = input(f"Ollama 地址 [{cfg['ollama_host']}]: ").strip()
+        if host:
+            cfg["ollama_host"] = host
+        model = input(f"Ollama 模型 [{cfg['ollama_model']}]: ").strip()
+        if model:
+            cfg["ollama_model"] = model
+    else:
+        # 自动配置常见后端
+        if cfg["backend"] == "deepseek":
+            cfg["api_base"] = "https://api.deepseek.com/v1"
+            cfg.setdefault("model", "deepseek-chat")
+            if cfg.get("model") == "gpt-4o-mini":
+                cfg["model"] = "deepseek-chat"
+        elif cfg["backend"] == "custom":
+            api_base = input(f"API Base URL [{cfg['api_base']}]: ").strip()
+            if api_base:
+                cfg["api_base"] = api_base
+            model = input(f"模型名称 [{cfg['model']}]: ").strip()
+            if model:
+                cfg["model"] = model
+
+        api_key = input(f"API Key [{'已设置，回车保持' if cfg['api_key'] else '请输入'}]: ").strip()
+        if api_key:
+            cfg["api_key"] = api_key
+
+        if cfg["backend"] in ("openai", "custom"):
+            model = input(f"模型名称 [{cfg['model']}]: ").strip()
+            if model:
+                cfg["model"] = model
+
+    # 语言选择
+    print("\n回复语言 / Response Language：")
+    lang_options = list(SUPPORTED_LANGUAGES.items())
+    for i, (code, name) in enumerate(lang_options, 1):
+        marker = " ← 当前 / current" if code == cfg.get("language", "zh") else ""
+        print(f"  {i}. {code}  {name}{marker}")
+    lang_choice = input("\n选择语言编号 / Select language [回车保持 / Enter to keep]: ").strip()
+    if lang_choice.isdigit() and 1 <= int(lang_choice) <= len(lang_options):
+        cfg["language"] = lang_options[int(lang_choice) - 1][0]
+
+    cache_choice = input(f"\n启用结果缓存？[{'y' if cfg['cache'] else 'n'}, 回车保持]: ").strip().lower()
+    if cache_choice == "y":
+        cfg["cache"] = True
+    elif cache_choice == "n":
+        cfg["cache"] = False
+
+    save_config(cfg)
+    _print_success(f"配置已保存 → {CONFIG_FILE}")
+    print(f"\n当前后端: {cfg['backend']}")
+    if cfg["backend"] == "ollama":
+        print(f"  Ollama: {cfg['ollama_host']}  模型: {cfg['ollama_model']}")
+    else:
+        print(f"  API Base: {cfg['api_base']}")
+        print(f"  模型: {cfg['model']}")
+        print(f"  API Key: {'已设置' if cfg['api_key'] else '⚠️  未设置'}")
+    lang_code = cfg.get("language", "zh")
+    print(f"  语言 / Language: {lang_code}（{SUPPORTED_LANGUAGES.get(lang_code, lang_code)}）")
+    print()
+
+
+def show_config(cfg: Dict[str, Any]):
+    if HAS_RICH:
+        from rich.table import Table
+        t = Table(title="当前配置", border_style="dim")
+        t.add_column("键", style="cyan")
+        t.add_column("值", style="yellow")
+        for k, v in cfg.items():
+            display_v = "***（已设置）" if k == "api_key" and v else str(v)
+            t.add_row(k, display_v)
+        console.print(t)
+    else:
+        print("\n当前配置：")
+        for k, v in cfg.items():
+            display_v = "***（已设置）" if k == "api_key" and v else str(v)
+            print(f"  {k}: {display_v}")
+        print()
+
+
+# ─────────────────────────────────────────────────────────────
+# 缓存
+# ─────────────────────────────────────────────────────────────
+
+def _cache_key(command: str, mode: str, model_id: str, lang: str = "zh") -> str:
+    raw = f"{command.strip()}|{mode}|{model_id}|{lang}"
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+def _get_cached(key: str) -> Optional[str]:
+    f = CACHE_DIR / f"{key}.md"
+    if f.exists():
+        try:
+            return f.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    return None
+
+
+def _set_cache(key: str, content: str):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        (CACHE_DIR / f"{key}.md").write_text(content, encoding="utf-8")
+    except Exception:
+        pass
+
+
+def clear_cache():
+    if CACHE_DIR.exists():
+        count = len(list(CACHE_DIR.glob("*.md")))
+        shutil.rmtree(CACHE_DIR)
+        _print_success(f"已清空缓存（共 {count} 条记录）")
+    else:
+        _print_info("缓存目录不存在，无需清理")
+
+
+def do_uninstall():
+    """交互式卸载：删除系统级二进制和用户配置目录"""
+    import subprocess
+
+    INSTALL_PATH = Path("/usr/local/bin/explain")
+
+    print()
+    print("将要删除以下内容：")
+    print(f"  ▸ 可执行文件：{INSTALL_PATH}")
+    print(f"  ▸ 配置 & 缓存：{CONFIG_DIR}")
+    print()
+
+    try:
+        confirm = input("确认卸载？[y/N] ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        _print_info("已取消卸载")
+        return
+
+    if confirm not in ("y", "yes"):
+        _print_info("已取消卸载")
+        return
+
+    print()
+
+    # ── 删除可执行文件 ─────────────────────────────────────
+    if INSTALL_PATH.exists():
+        _print_info(f"删除 {INSTALL_PATH} ...")
+        try:
+            INSTALL_PATH.unlink()
+            _print_success("可执行文件已删除")
+        except PermissionError:
+            try:
+                subprocess.run(["sudo", "rm", "-f", str(INSTALL_PATH)], check=True)
+                _print_success("可执行文件已删除（sudo）")
+            except Exception as e:
+                _print_error(f"删除失败，请手动执行：sudo rm -f {INSTALL_PATH}\n  错误：{e}")
+    else:
+        _print_info(f"未找到 {INSTALL_PATH}，跳过")
+
+    # ── 删除配置目录（含缓存）──────────────────────────────
+    if CONFIG_DIR.exists():
+        cache_count = len(list(CACHE_DIR.glob("*.md"))) if CACHE_DIR.exists() else 0
+        _print_info(f"删除配置目录 {CONFIG_DIR}（缓存 {cache_count} 条）...")
+        shutil.rmtree(CONFIG_DIR)
+        _print_success("配置目录已删除")
+    else:
+        _print_info("配置目录不存在，跳过")
+
+    print()
+    _print_success("explain-tool 已完全卸载！")
+    print()
+    print("  如需重新安装，请运行：./install.sh")
+    print()
+
+
+# ─────────────────────────────────────────────────────────────
+# LLM API 调用
+# ─────────────────────────────────────────────────────────────
+
+def _http_post(url: str, payload: dict, headers: dict, timeout: int = 120) -> dict:
+    """通用 HTTP POST，使用标准库 urllib（无需 requests）"""
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _call_openai_compat(
+    api_base: str, api_key: str, model: str,
+    system_prompt: str, user_message: str,
+    max_tokens: int = 2048,
+) -> str:
+    url = f"{api_base.rstrip('/')}/chat/completions"
+    headers = {
+        "Content-Type":  "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+        "temperature": 0.2,
+        "max_tokens":  max_tokens,
+    }
+    data = _http_post(url, payload, headers)
+    return data["choices"][0]["message"]["content"]
+
+
+def _call_ollama(
+    host: str, model: str,
+    system_prompt: str, user_message: str,
+    max_tokens: int = 2048,
+) -> str:
+    url = f"{host.rstrip('/')}/api/chat"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+        "stream":  False,
+        "options": {"temperature": 0.2, "num_predict": max_tokens},
+    }
+    data = _http_post(url, payload, headers, timeout=180)
+    return data["message"]["content"]
+
+
+def _query_llm(
+    cfg: Dict[str, Any], system_prompt: str, command: str,
+    lang: str = "zh", max_tokens: int = 2048,
+) -> str:
+    if lang == "en":
+        user_msg = (
+            f"Please explain the following Linux/Kali command — its purpose, parameters, and usage scenarios:\n\n"
+            f"```\n{command}\n```"
+        )
+    else:
+        user_msg = (
+            f"请解释以下 Linux/Kali 命令的作用含义和使用场景：\n\n"
+            f"```\n{command}\n```"
+        )
+    backend = cfg.get("backend", "openai")
+
+    if backend == "ollama":
+        return _call_ollama(
+            cfg["ollama_host"], cfg["ollama_model"],
+            system_prompt, user_msg, max_tokens=max_tokens,
+        )
+    else:
+        api_key = cfg.get("api_key", "").strip()
+        if not api_key:
+            raise ValueError(
+                "API Key 未配置！请运行 explain --config 进行配置，\n"
+                "  或设置环境变量 EXPLAIN_API_KEY=<your-key>"
+            )
+        return _call_openai_compat(
+            cfg["api_base"], api_key, cfg["model"],
+            system_prompt, user_msg, max_tokens=max_tokens,
+        )
+
+
+# ─────────────────────────────────────────────────────────────
+# 核心逻辑
+# ─────────────────────────────────────────────────────────────
+
+_PROMPTS = {
+    "zh": {
+        "both":     SYSTEM_BOTH,
+        "security": SYSTEM_SECURITY,
+        "general":  SYSTEM_GENERAL,
+        "quick":    SYSTEM_QUICK_ZH,
+    },
+    "en": {
+        "both":     SYSTEM_BOTH_EN,
+        "security": SYSTEM_SECURITY_EN,
+        "general":  SYSTEM_GENERAL_EN,
+        "quick":    SYSTEM_QUICK_EN,
+    },
+}
+
+
+def explain_command(
+    command: str,
+    mode: str,
+    cfg: Dict[str, Any],
+    no_cache: bool = False,
+):
+    lang = cfg.get("language", "zh")
+    prompts = _PROMPTS.get(lang, _PROMPTS["zh"])
+    system_prompt = prompts[mode]
+
+    is_quick = (mode == "quick")
+    # 快速模式压低 token 上限，加快响应
+    max_tokens = QUICK_MAX_TOKENS if is_quick else 2048
+
+    model_id = (
+        cfg.get("ollama_model") if cfg.get("backend") == "ollama"
+        else cfg.get("model", "unknown")
+    )
+    key = _cache_key(command, mode, model_id, lang)
+
+    # ── 检查缓存 ──────────────────────────────────────────────
+    if cfg.get("cache", True) and not no_cache:
+        cached = _get_cached(key)
+        if cached is not None:
+            _print_header(command, mode, lang)
+            if HAS_RICH and not is_quick:
+                cache_hint = "From cache (use -n to force refresh)" if lang == "en" else "来自缓存（使用 -n 可强制刷新）"
+                console.print(f"[dim]  💾 {cache_hint}[/dim]\n")
+            _print_result(cached, quick=is_quick)
+            return
+
+    # ── 调用 LLM ──────────────────────────────────────────────
+    _print_header(command, mode, lang)
+    if not is_quick:
+        querying_msg = "Querying, please wait…" if lang == "en" else "正在查询，请稍候…"
+        _print_info(querying_msg)
+
+    try:
+        result = _query_llm(cfg, system_prompt, command, lang, max_tokens=max_tokens)
+    except ValueError as e:
+        _print_error(str(e))
+        sys.exit(1)
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8")
+        except Exception:
+            pass
+        _print_error(f"HTTP {e.code}: {e.reason}\n{body[:300]}")
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        err_prefix = "Network error" if lang == "en" else "网络请求失败"
+        _print_error(f"{err_prefix}: {e.reason}")
+        sys.exit(1)
+    except Exception as e:
+        err_prefix = "Unexpected error" if lang == "en" else "未知错误"
+        _print_error(f"{err_prefix}: {e}")
+        sys.exit(1)
+
+    # ── 输出 & 缓存 ───────────────────────────────────────────
+    if HAS_RICH and not is_quick:
+        console.print()
+    _print_result(result, quick=is_quick)
+
+    if cfg.get("cache", True) and not no_cache:
+        _set_cache(key, result)
+
+
+# ─────────────────────────────────────────────────────────────
+# CLI 入口
+# ─────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="explain",
+        description=(
+            "Kali/Ubuntu 命令行解释工具 — 双视角（安全 + 通用）\n"
+            "支持 OpenAI / DeepSeek / Ollama 本地模型"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""示例 / Examples:
+  explain -q chmod u+s /bin/bash            # ⚡ 快速模式（仅核心作用）
+  explain chmod u+s /bin/bash               # 全视角（通用+安全）
+  explain -s find / -perm -4000 2>/dev/null # 仅安全视角
+  explain -g tar -czf archive.tar.gz /etc   # 仅通用视角
+  explain -sg nmap -sV -O 192.168.1.1
+  explain --lang en -q ls -la               # 英文快速模式
+  explain --config
+  explain --show-config
+  explain --clear-cache""",
+    )
+
+    # 视角标志（可以同时加 -s 和 -g，等价于不加任何标志；-q 与两者互斥）
+    parser.add_argument(
+        "-q", "--quick",
+        action="store_true",
+        help="⚡ 快速模式：只输出核心作用（1-3句），响应最快",
+    )
+    parser.add_argument(
+        "-s", "--security",
+        action="store_true",
+        help="显示安全视角（渗透测试 / CTF / 红队）",
+    )
+    parser.add_argument(
+        "-g", "--general",
+        action="store_true",
+        help="显示通用视角（系统管理 / 运维）",
+    )
+    parser.add_argument(
+        "-n", "--no-cache",
+        action="store_true",
+        help="忽略缓存，强制重新查询 / ignore cache, force re-query",
+    )
+    parser.add_argument(
+        "--lang",
+        choices=list(SUPPORTED_LANGUAGES.keys()),
+        metavar="LANG",
+        help="回复语言：zh（中文，默认）/ en（English）；临时覆盖配置，仅本次有效",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["openai", "ollama", "deepseek", "custom"],
+        help="临时指定 LLM 后端（覆盖配置文件，仅本次有效）",
+    )
+    parser.add_argument(
+        "--config",
+        action="store_true",
+        help="运行交互式配置向导 / run interactive config wizard",
+    )
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="显示当前配置 / show current config",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="清空本地查询缓存 / clear local query cache",
+    )
+    parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="交互式卸载（删除二进制和配置目录）/ interactive uninstall",
+    )
+    parser.add_argument(
+        "command",
+        nargs="*",
+        help="要解释的命令（含参数）",
+    )
+
+    args = parser.parse_args()
+
+    # ── 功能型子命令 ──────────────────────────────────────────
+    if args.config:
+        run_config_wizard()
+        return
+
+    if args.show_config:
+        show_config(load_config())
+        return
+
+    if args.clear_cache:
+        clear_cache()
+        return
+
+    if args.uninstall:
+        do_uninstall()
+        return
+
+    if not args.command:
+        parser.print_help()
+        print(
+            "\n提示：首次使用请先运行 explain --config 配置 LLM 后端\n"
+            "      本地无 API Key 可选择 Ollama（需本地运行 Ollama）\n"
+        )
+        sys.exit(0)
+
+    # ── 确定解释模式 ──────────────────────────────────────────
+    # -q 优先级最高；两个都选或都不选 → 全视角
+    if args.quick:
+        if args.security or args.general:
+            _print_error("-q（快速模式）不能与 -s / -g 同时使用")
+            sys.exit(1)
+        mode = "quick"
+    elif args.security and args.general:
+        mode = "both"
+    elif args.security:
+        mode = "security"
+    elif args.general:
+        mode = "general"
+    else:
+        mode = "both"
+
+    command_str = " ".join(args.command)
+
+    # ── 加载配置，支持环境变量覆盖 ───────────────────────────
+    cfg = load_config()
+
+    # 环境变量优先级最高
+    env_key = os.environ.get("EXPLAIN_API_KEY", "").strip()
+    if env_key:
+        cfg["api_key"] = env_key
+    env_base = os.environ.get("EXPLAIN_API_BASE", "").strip()
+    if env_base:
+        cfg["api_base"] = env_base
+    env_model = os.environ.get("EXPLAIN_MODEL", "").strip()
+    if env_model:
+        cfg["model"] = env_model
+    env_lang = os.environ.get("EXPLAIN_LANG", "").strip().lower()
+    if env_lang in SUPPORTED_LANGUAGES:
+        cfg["language"] = env_lang
+
+    # CLI 参数临时覆盖（优先级最高）
+    if args.lang:
+        cfg["language"] = args.lang
+    if args.backend:
+        cfg["backend"] = args.backend
+        if args.backend == "deepseek":
+            cfg["api_base"] = "https://api.deepseek.com/v1"
+            if cfg.get("model") in ("gpt-4o-mini", ""):
+                cfg["model"] = "deepseek-chat"
+
+    explain_command(command_str, mode, cfg, no_cache=args.no_cache)
+
+
+if __name__ == "__main__":
+    main()
