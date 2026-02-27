@@ -16,12 +16,17 @@
 # ============================================================
 set -e
 
+# 最开头固定原始目录，任何 cd 之后都能精确回来
+ORIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 GITHUB_USER="Kriemseeley"
 GITHUB_REPO="explain_easily"
 BRANCH="apt-repo"                            # GitHub Pages 专用分支
 REPO_COMPONENT="main"
 REPO_CODENAME="stable"
-DEB_FILE="${1:-$(ls ./*.deb 2>/dev/null | sort | tail -1)}"
+# 转为绝对路径，防止 cd 后找不到文件
+_DEB_RAW="${1:-$(ls "${ORIG_DIR}"/*.deb 2>/dev/null | sort | tail -1)}"
+DEB_FILE="$(cd "$(dirname "$_DEB_RAW")" 2>/dev/null && echo "$(pwd)/$(basename "$_DEB_RAW")")"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
@@ -76,8 +81,8 @@ GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null \
 info "使用 GPG Key ID：$GPG_KEY_ID"
 
 # 导出公钥（用户需要导入才能验证签名）
-gpg --armor --export "$GPG_KEY_ID" > explain-tool.gpg.key
-success "公钥已导出 → explain-tool.gpg.key"
+gpg --armor --export "$GPG_KEY_ID" > "${ORIG_DIR}/explain-tool.gpg.key"
+success "公钥已导出 → ${ORIG_DIR}/explain-tool.gpg.key"
 
 # ── 3. 准备临时工作目录 ──────────────────────────────────────
 WORK_DIR=$(mktemp -d)
@@ -126,11 +131,9 @@ EOF
 gpg --default-key "$GPG_KEY_ID" --clearsign -o InRelease Release 2>/dev/null
 gpg --default-key "$GPG_KEY_ID" -abs -o Release.gpg Release 2>/dev/null
 success "Release 文件及签名生成完成"
-cd - > /dev/null
 
 # ── 6. 回到原项目目录，推送到 apt-repo 分支 ─────────────────
-cd - > /dev/null 2>&1 || true
-ORIG_DIR="$(pwd)"
+cd "$ORIG_DIR"
 
 info "切换到 apt-repo 分支..."
 # 如果分支不存在则创建孤立分支
@@ -147,7 +150,7 @@ fi
 info "拷贝仓库文件..."
 cp -r "$WORK_DIR/pool" .
 cp -r "$WORK_DIR/dists" .
-cp "$ORIG_DIR/explain-tool.gpg.key" .
+cp "${ORIG_DIR}/explain-tool.gpg.key" .
 
 # 创建 index.html 方便在浏览器访问
 cat > index.html <<HTMLEOF
