@@ -2,14 +2,15 @@
 
 # explain-tool
 
-**专为 Kali Linux / Ubuntu 设计的 AI 命令解释工具**
+**Linux 通用 AI 命令解释工具**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/Platform-Kali%20%7C%20Ubuntu-purple.svg)]()
-[![apt](https://img.shields.io/badge/Install-apt%20%7C%20script-green.svg)]()
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Linux-orange.svg)]()
+[![Distros](https://img.shields.io/badge/Distros-Debian%20%7C%20Fedora%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-lightgrey.svg)]()
+[![apt](https://img.shields.io/badge/Install-apt%20%7C%20script%20%7C%20manual-green.svg)]()
 
-输入任意 Linux / Kali 命令，即刻获得**三种视角**的专业解释：  
+输入任意 Linux 命令，即刻获得**三种视角**的专业解释：  
 ⚡ 快速一句话 · 🔧 通用运维 · 🔴 安全渗透
 
 </div>
@@ -47,9 +48,9 @@
 
 ## 安装
 
-### 方式一：apt 安装（推荐）
+### 方式一：apt 安装（Debian / Ubuntu / Kali，推荐）
 
-> 支持 `apt upgrade` 自动更新，适合长期使用。
+> 支持 `apt upgrade` 自动更新，适合 Debian 系发行版长期使用。
 
 ```bash
 # 添加 GPG 公钥
@@ -66,7 +67,9 @@ https://kriemseeley.github.io/explain_easily stable main" \
 sudo apt update && sudo apt install explain-tool
 ```
 
-### 方式二：一键脚本安装
+### 方式二：一键脚本安装（所有发行版通用）
+
+脚本自动检测发行版并调用对应包管理器安装依赖。
 
 ```bash
 git clone https://github.com/Kriemseeley/explain_easily.git
@@ -74,10 +77,23 @@ cd explain_easily
 chmod +x install.sh && ./install.sh
 ```
 
-### 方式三：手动安装
+**支持的发行版：**
+
+| 发行版系列 | 包管理器 | 代表系统 |
+|-----------|---------|---------|
+| Debian 系 | `apt` | Debian · Ubuntu · Kali · Linux Mint |
+| Red Hat 系 | `dnf` / `yum` | Fedora · RHEL · CentOS · Rocky · AlmaLinux |
+| Arch 系 | `pacman` | Arch Linux · Manjaro · EndeavourOS |
+| SUSE 系 | `zypper` | openSUSE Leap · Tumbleweed |
+| Alpine | `apk` | Alpine Linux（含 Docker 容器环境） |
+
+### 方式三：手动安装（任意 Linux）
 
 ```bash
-pip3 install rich
+# 安装依赖
+pip3 install rich           # 或：python3 -m pip install rich
+
+# 安装主脚本
 sudo cp explain /usr/local/bin/explain
 sudo chmod +x /usr/local/bin/explain
 ```
@@ -114,7 +130,7 @@ ollama pull qwen2.5:7b
 explain --config
 ```
 
-> 安全场景下推荐使用本地 Ollama，命令内容完全不离开本机。
+> 渗透测试、CTF 等安全敏感场景下推荐使用本地 Ollama，命令内容完全不离开本机，无需网络连接。
 
 ### 使用环境变量（临时覆盖，适合脚本 / CI）
 
@@ -277,8 +293,8 @@ export EXPLAIN_LANG=en
 
 ```
 explain_easily/
-├── explain             # 主脚本（Python 3.10+，无其他强依赖）
-├── install.sh          # 一键安装脚本（Kali / Ubuntu）
+├── explain             # 主脚本（Python 3.8+，无强依赖，跨发行版通用）
+├── install.sh          # 一键安装脚本（自动检测发行版，全 Linux 通用）
 ├── build-deb.sh        # 构建 .deb 包
 ├── publish-repo.sh     # 发布到 GitHub Pages apt 仓库
 ├── debian/             # Debian 打包元数据

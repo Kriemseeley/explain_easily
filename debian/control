@@ -11,12 +11,14 @@ Package: explain-tool
 Architecture: all
 Depends: python3 (>= 3.10), ${misc:Depends}
 Recommends: python3-rich
-Description: Linux/Kali command explanation tool with dual perspectives
- A command-line tool designed for Kali Linux and Ubuntu that explains
- the meaning and usage of shell commands from two angles:
+Description: Linux command explanation tool with triple perspectives
+ A command-line tool for Linux that explains the meaning and usage of
+ shell commands from three angles:
  .
-  - General perspective (sysadmin / DevOps best practices)
-  - Security perspective (pentesting / CTF / privilege escalation)
+  - Quick mode: one-line summary for fast lookup
+  - General perspective: sysadmin / DevOps best practices
+  - Security perspective: pentesting / CTF / privilege escalation
  .
  Supports OpenAI, DeepSeek, and local Ollama backends.
  Bilingual output: Chinese (zh) and English (en).
+ Compatible with Debian/Ubuntu/Kali, Fedora/RHEL, Arch, openSUSE, Alpine.

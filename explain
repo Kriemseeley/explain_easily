@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-explain - 专为 Kali/Ubuntu 设计的命令行解释工具
+explain - Linux 命令行解释工具
 支持安全（渗透测试/CTF/红队）与通用（运维/管理）双视角
+兼容：Debian/Ubuntu/Kali · Fedora/RHEL/CentOS · Arch · openSUSE · Alpine
 
 用法:
-  explain <command>              # 同时输出安全 + 通用两种视角
+  explain <command>              # 同时输出安全 + 通用两种视角（默认）
+  explain -q <command>           # 快速模式：仅输出命令核心作用（1-3句）
   explain -s <command>           # 仅安全视角（渗透/CTF/PrivEsc）
   explain -g <command>           # 仅通用视角（系统管理/运维）
   explain -n <command>           # 忽略缓存强制重新查询
@@ -14,10 +16,10 @@ explain - 专为 Kali/Ubuntu 设计的命令行解释工具
   explain --uninstall            # 交互式卸载工具
 
 示例:
-  explain chmod u+s /bin/bash
+  explain -q chmod u+s /bin/bash
   explain -s find / -perm -4000 2>/dev/null
   explain -g tar -czf backup.tar.gz /etc
-  explain -sg nmap -sV -O 192.168.1.1
+  explain chmod u+s /bin/bash
 """
 
 import argparse
@@ -64,7 +66,7 @@ QUICK_MAX_TOKENS = 300
 
 SYSTEM_BOTH = """\
 你是一名同时精通 Linux 系统管理和网络安全（渗透测试/CTF）的专家顾问。
-用户会给你一条 Linux/Kali 命令（可能带参数和目标路径），请严格按以下 Markdown 结构回复：
+用户会给你一条 Linux 命令（可能带参数和目标路径），请严格按以下 Markdown 结构回复：
 
 ## 📋 命令概览
 （1-2 句话描述该命令的核心功能）
@@ -85,7 +87,7 @@ SYSTEM_BOTH = """\
 全部使用中文回答，语言精准，适合终端阅读。"""
 
 SYSTEM_SECURITY = """\
-你是一名经验丰富的红队渗透测试工程师，专注于 Linux/Kali 命令的安全应用与漏洞利用。
+你是一名经验丰富的红队渗透测试工程师，专注于 Linux 命令的安全应用与漏洞利用。
 用户给你一条命令，请从以下安全角度深入分析（全部用中文，专业精准）：
 
 ## 📋 命令概览
@@ -145,7 +147,7 @@ SYSTEM_GENERAL = """\
 # ── 快速模式提示词（仅输出核心作用，不含结构化格式）─────────
 
 SYSTEM_QUICK_ZH = """\
-你是一个 Linux/Kali 命令速查助手。
+你是一个 Linux 命令速查助手。
 用户给你一条命令，请用 **1-3 句纯中文** 直接说明它的核心作用。
 要求：
 - 不需要任何 Markdown 标题或分节
@@ -153,7 +155,7 @@ SYSTEM_QUICK_ZH = """\
 - 语言精准简洁，像字典释义一样直接"""
 
 SYSTEM_QUICK_EN = """\
-You are a Linux/Kali command quick-reference assistant.
+You are a Linux command quick-reference assistant.
 Given a command, respond with **1-3 plain English sentences** describing its core purpose.
 Rules:
 - No Markdown headers or sections
@@ -164,7 +166,7 @@ Rules:
 
 SYSTEM_BOTH_EN = """\
 You are an expert consultant proficient in both Linux system administration and cybersecurity (penetration testing / CTF).
-The user will provide a Linux/Kali command (possibly with flags and target paths).
+The user will provide a Linux command (possibly with flags and target paths).
 Reply strictly in the following Markdown structure, in English:
 
 ## 📋 Overview
@@ -186,7 +188,7 @@ Reply strictly in the following Markdown structure, in English:
 Respond entirely in English. Be precise and terminal-friendly."""
 
 SYSTEM_SECURITY_EN = """\
-You are an experienced red-team penetration tester focused on the security applications and exploitation of Linux/Kali commands.
+You are an experienced red-team penetration tester focused on the security applications and exploitation of Linux commands.
 Analyze the provided command from the following security angles, entirely in English:
 
 ## 📋 Overview
@@ -608,12 +610,12 @@ def _query_llm(
 ) -> str:
     if lang == "en":
         user_msg = (
-            f"Please explain the following Linux/Kali command — its purpose, parameters, and usage scenarios:\n\n"
+            f"Please explain the following Linux command — its purpose, parameters, and usage scenarios:\n\n"
             f"```\n{command}\n```"
         )
     else:
         user_msg = (
-            f"请解释以下 Linux/Kali 命令的作用含义和使用场景：\n\n"
+            f"请解释以下 Linux 命令的作用含义和使用场景：\n\n"
             f"```\n{command}\n```"
         )
     backend = cfg.get("backend", "openai")
@@ -732,7 +734,7 @@ def main():
     parser = argparse.ArgumentParser(
         prog="explain",
         description=(
-            "Kali/Ubuntu 命令行解释工具 — 双视角（安全 + 通用）\n"
+            "Linux 命令行解释工具 — 三种模式（⚡快速 / 🔧通用 / 🔴安全）\n"
             "支持 OpenAI / DeepSeek / Ollama 本地模型"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -829,7 +831,7 @@ def main():
         parser.print_help()
         print(
             "\n提示：首次使用请先运行 explain --config 配置 LLM 后端\n"
-            "      本地无 API Key 可选择 Ollama（需本地运行 Ollama）\n"
+            "      无 API Key 可选择本地 Ollama（需先安装并运行 Ollama）\n"
         )
         sys.exit(0)
 
