@@ -142,6 +142,7 @@ export EXPLAIN_LANG=en
   --config            运行交互式配置向导
   --show-config       显示当前配置
   --clear-cache       清空本地缓存
+  --uninstall         交互式卸载（删除二进制和配置目录）
   -h, --help          显示帮助
 ```
 
@@ -204,9 +205,35 @@ GTFOBins 收录：是
 
 ## 卸载
 
+### 方式一：一键卸载脚本（推荐，git clone 安装后使用）
+
 ```bash
-sudo rm /usr/local/bin/explain
+cd explain_easily        # 进入克隆的项目目录
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+脚本会交互式确认后，自动删除可执行文件和配置目录。
+
+### 方式二：通过命令行参数卸载
+
+如果 `explain` 还可以正常运行，可以直接执行：
+
+```bash
+explain --uninstall
+```
+
+### 方式三：手动卸载
+
+```bash
+sudo rm -f /usr/local/bin/explain
 rm -rf ~/.config/explain-tool
+```
+
+### apt 安装的卸载方式
+
+```bash
+sudo apt remove explain-tool
 ```
 
 ---

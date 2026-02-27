@@ -11,6 +11,7 @@ explain - 专为 Kali/Ubuntu 设计的命令行解释工具
   explain -n <command>           # 忽略缓存强制重新查询
   explain --config               # 运行配置向导
   explain --clear-cache          # 清空本地缓存
+  explain --uninstall            # 交互式卸载工具
 
 示例:
   explain chmod u+s /bin/bash
@@ -453,6 +454,62 @@ def clear_cache():
         _print_info("缓存目录不存在，无需清理")
 
 
+def do_uninstall():
+    """交互式卸载：删除系统级二进制和用户配置目录"""
+    import subprocess
+
+    INSTALL_PATH = Path("/usr/local/bin/explain")
+
+    print()
+    print("将要删除以下内容：")
+    print(f"  ▸ 可执行文件：{INSTALL_PATH}")
+    print(f"  ▸ 配置 & 缓存：{CONFIG_DIR}")
+    print()
+
+    try:
+        confirm = input("确认卸载？[y/N] ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        _print_info("已取消卸载")
+        return
+
+    if confirm not in ("y", "yes"):
+        _print_info("已取消卸载")
+        return
+
+    print()
+
+    # ── 删除可执行文件 ─────────────────────────────────────
+    if INSTALL_PATH.exists():
+        _print_info(f"删除 {INSTALL_PATH} ...")
+        try:
+            INSTALL_PATH.unlink()
+            _print_success("可执行文件已删除")
+        except PermissionError:
+            try:
+                subprocess.run(["sudo", "rm", "-f", str(INSTALL_PATH)], check=True)
+                _print_success("可执行文件已删除（sudo）")
+            except Exception as e:
+                _print_error(f"删除失败，请手动执行：sudo rm -f {INSTALL_PATH}\n  错误：{e}")
+    else:
+        _print_info(f"未找到 {INSTALL_PATH}，跳过")
+
+    # ── 删除配置目录（含缓存）──────────────────────────────
+    if CONFIG_DIR.exists():
+        cache_count = len(list(CACHE_DIR.glob("*.md"))) if CACHE_DIR.exists() else 0
+        _print_info(f"删除配置目录 {CONFIG_DIR}（缓存 {cache_count} 条）...")
+        shutil.rmtree(CONFIG_DIR)
+        _print_success("配置目录已删除")
+    else:
+        _print_info("配置目录不存在，跳过")
+
+    print()
+    _print_success("explain-tool 已完全卸载！")
+    print()
+    print("  如需重新安装，请运行：./install.sh")
+    print()
+
+
 # ─────────────────────────────────────────────────────────────
 # LLM API 调用
 # ─────────────────────────────────────────────────────────────
@@ -686,6 +743,11 @@ def main():
         help="清空本地查询缓存 / clear local query cache",
     )
     parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="交互式卸载（删除二进制和配置目录）/ interactive uninstall",
+    )
+    parser.add_argument(
         "command",
         nargs="*",
         help="要解释的命令（含参数）",
@@ -704,6 +766,10 @@ def main():
 
     if args.clear_cache:
         clear_cache()
+        return
+
+    if args.uninstall:
+        do_uninstall()
         return
 
     if not args.command:
