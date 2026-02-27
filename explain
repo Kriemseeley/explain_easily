@@ -55,6 +55,9 @@ SUPPORTED_LANGUAGES = {
     "en": "English",
 }
 
+# 快速模式 token 上限（越小越快）
+QUICK_MAX_TOKENS = 300
+
 # ─────────────────────────────────────────────────────────────
 # 提示词
 # ─────────────────────────────────────────────────────────────
@@ -138,6 +141,24 @@ SYSTEM_GENERAL = """\
 
 ---
 语言通俗，适合有一定 Linux 基础的工程师阅读。"""
+
+# ── 快速模式提示词（仅输出核心作用，不含结构化格式）─────────
+
+SYSTEM_QUICK_ZH = """\
+你是一个 Linux/Kali 命令速查助手。
+用户给你一条命令，请用 **1-3 句纯中文** 直接说明它的核心作用。
+要求：
+- 不需要任何 Markdown 标题或分节
+- 如果该命令有明显的安全风险，在末尾用【⚠️ 安全风险：…】简短提示
+- 语言精准简洁，像字典释义一样直接"""
+
+SYSTEM_QUICK_EN = """\
+You are a Linux/Kali command quick-reference assistant.
+Given a command, respond with **1-3 plain English sentences** describing its core purpose.
+Rules:
+- No Markdown headers or sections
+- If the command has notable security implications, append 【⚠️ Security: …】briefly
+- Be concise and precise, like a dictionary definition"""
 
 # ── English prompts ───────────────────────────────────────────
 
@@ -238,6 +259,14 @@ except ImportError:
 
 
 def _print_header(command: str, mode: str, lang: str = "zh"):
+    # 快速模式用轻量单行样式
+    if mode == "quick":
+        if HAS_RICH:
+            console.print(f"\n[bold cyan]⚡[/bold cyan] [bold yellow]{command}[/bold yellow]")
+        else:
+            print(f"\n⚡ {command}")
+        return
+
     mode_labels_zh = {
         "both":     "全视角（通用 + 安全）",
         "security": "🔴 安全视角（渗透 / CTF / 红队）",
@@ -268,7 +297,15 @@ def _print_header(command: str, mode: str, lang: str = "zh"):
         print(f"{sep}\n")
 
 
-def _print_result(content: str):
+def _print_result(content: str, quick: bool = False):
+    if quick:
+        # 快速模式：纯文本，不渲染 Markdown
+        if HAS_RICH:
+            console.print(f"[white]{content}[/white]\n")
+        else:
+            print(content)
+            print()
+        return
     if HAS_RICH:
         console.print(Markdown(content))
         console.print()
@@ -524,7 +561,8 @@ def _http_post(url: str, payload: dict, headers: dict, timeout: int = 120) -> di
 
 def _call_openai_compat(
     api_base: str, api_key: str, model: str,
-    system_prompt: str, user_message: str
+    system_prompt: str, user_message: str,
+    max_tokens: int = 2048,
 ) -> str:
     url = f"{api_base.rstrip('/')}/chat/completions"
     headers = {
@@ -538,7 +576,7 @@ def _call_openai_compat(
             {"role": "user",   "content": user_message},
         ],
         "temperature": 0.2,
-        "max_tokens":  2048,
+        "max_tokens":  max_tokens,
     }
     data = _http_post(url, payload, headers)
     return data["choices"][0]["message"]["content"]
@@ -546,7 +584,8 @@ def _call_openai_compat(
 
 def _call_ollama(
     host: str, model: str,
-    system_prompt: str, user_message: str
+    system_prompt: str, user_message: str,
+    max_tokens: int = 2048,
 ) -> str:
     url = f"{host.rstrip('/')}/api/chat"
     headers = {"Content-Type": "application/json"}
@@ -557,13 +596,16 @@ def _call_ollama(
             {"role": "user",   "content": user_message},
         ],
         "stream":  False,
-        "options": {"temperature": 0.2},
+        "options": {"temperature": 0.2, "num_predict": max_tokens},
     }
     data = _http_post(url, payload, headers, timeout=180)
     return data["message"]["content"]
 
 
-def _query_llm(cfg: Dict[str, Any], system_prompt: str, command: str, lang: str = "zh") -> str:
+def _query_llm(
+    cfg: Dict[str, Any], system_prompt: str, command: str,
+    lang: str = "zh", max_tokens: int = 2048,
+) -> str:
     if lang == "en":
         user_msg = (
             f"Please explain the following Linux/Kali command — its purpose, parameters, and usage scenarios:\n\n"
@@ -579,7 +621,7 @@ def _query_llm(cfg: Dict[str, Any], system_prompt: str, command: str, lang: str 
     if backend == "ollama":
         return _call_ollama(
             cfg["ollama_host"], cfg["ollama_model"],
-            system_prompt, user_msg
+            system_prompt, user_msg, max_tokens=max_tokens,
         )
     else:
         api_key = cfg.get("api_key", "").strip()
@@ -590,7 +632,7 @@ def _query_llm(cfg: Dict[str, Any], system_prompt: str, command: str, lang: str 
             )
         return _call_openai_compat(
             cfg["api_base"], api_key, cfg["model"],
-            system_prompt, user_msg
+            system_prompt, user_msg, max_tokens=max_tokens,
         )
 
 
@@ -603,11 +645,13 @@ _PROMPTS = {
         "both":     SYSTEM_BOTH,
         "security": SYSTEM_SECURITY,
         "general":  SYSTEM_GENERAL,
+        "quick":    SYSTEM_QUICK_ZH,
     },
     "en": {
         "both":     SYSTEM_BOTH_EN,
         "security": SYSTEM_SECURITY_EN,
         "general":  SYSTEM_GENERAL_EN,
+        "quick":    SYSTEM_QUICK_EN,
     },
 }
 
@@ -619,9 +663,12 @@ def explain_command(
     no_cache: bool = False,
 ):
     lang = cfg.get("language", "zh")
-    # 不支持的语言代码回退到中文
     prompts = _PROMPTS.get(lang, _PROMPTS["zh"])
     system_prompt = prompts[mode]
+
+    is_quick = (mode == "quick")
+    # 快速模式压低 token 上限，加快响应
+    max_tokens = QUICK_MAX_TOKENS if is_quick else 2048
 
     model_id = (
         cfg.get("ollama_model") if cfg.get("backend") == "ollama"
@@ -634,19 +681,20 @@ def explain_command(
         cached = _get_cached(key)
         if cached is not None:
             _print_header(command, mode, lang)
-            if HAS_RICH:
+            if HAS_RICH and not is_quick:
                 cache_hint = "From cache (use -n to force refresh)" if lang == "en" else "来自缓存（使用 -n 可强制刷新）"
                 console.print(f"[dim]  💾 {cache_hint}[/dim]\n")
-            _print_result(cached)
+            _print_result(cached, quick=is_quick)
             return
 
     # ── 调用 LLM ──────────────────────────────────────────────
     _print_header(command, mode, lang)
-    querying_msg = "Querying, please wait…" if lang == "en" else "正在查询，请稍候…"
-    _print_info(querying_msg)
+    if not is_quick:
+        querying_msg = "Querying, please wait…" if lang == "en" else "正在查询，请稍候…"
+        _print_info(querying_msg)
 
     try:
-        result = _query_llm(cfg, system_prompt, command, lang)
+        result = _query_llm(cfg, system_prompt, command, lang, max_tokens=max_tokens)
     except ValueError as e:
         _print_error(str(e))
         sys.exit(1)
@@ -668,9 +716,9 @@ def explain_command(
         sys.exit(1)
 
     # ── 输出 & 缓存 ───────────────────────────────────────────
-    if HAS_RICH:
+    if HAS_RICH and not is_quick:
         console.print()
-    _print_result(result)
+    _print_result(result, quick=is_quick)
 
     if cfg.get("cache", True) and not no_cache:
         _set_cache(key, result)
@@ -689,18 +737,23 @@ def main():
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""示例 / Examples:
-  explain chmod u+s /bin/bash
-  explain -s find / -perm -4000 2>/dev/null
-  explain -g tar -czf archive.tar.gz /etc
+  explain -q chmod u+s /bin/bash            # ⚡ 快速模式（仅核心作用）
+  explain chmod u+s /bin/bash               # 全视角（通用+安全）
+  explain -s find / -perm -4000 2>/dev/null # 仅安全视角
+  explain -g tar -czf archive.tar.gz /etc   # 仅通用视角
   explain -sg nmap -sV -O 192.168.1.1
-  explain --lang en chmod u+s /bin/bash     # English output
-  explain --lang zh -s sudo -l              # 中文安全视角
+  explain --lang en -q ls -la               # 英文快速模式
   explain --config
   explain --show-config
   explain --clear-cache""",
     )
 
-    # 视角标志（可以同时加 -s 和 -g，等价于不加任何标志）
+    # 视角标志（可以同时加 -s 和 -g，等价于不加任何标志；-q 与两者互斥）
+    parser.add_argument(
+        "-q", "--quick",
+        action="store_true",
+        help="⚡ 快速模式：只输出核心作用（1-3句），响应最快",
+    )
     parser.add_argument(
         "-s", "--security",
         action="store_true",
@@ -781,8 +834,13 @@ def main():
         sys.exit(0)
 
     # ── 确定解释模式 ──────────────────────────────────────────
-    # 两个都选或都不选 → 全视角
-    if args.security and args.general:
+    # -q 优先级最高；两个都选或都不选 → 全视角
+    if args.quick:
+        if args.security or args.general:
+            _print_error("-q（快速模式）不能与 -s / -g 同时使用")
+            sys.exit(1)
+        mode = "quick"
+    elif args.security and args.general:
         mode = "both"
     elif args.security:
         mode = "security"

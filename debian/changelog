@@ -1,3 +1,11 @@
+explain-tool (1.1.0-1) stable; urgency=low
+
+  * 新增 -q / --quick 快速模式：只输出命令核心作用（1-3句），响应速度大幅提升。
+  * 快速模式使用独立提示词，max_tokens=300，支持中英文。
+  * 快速模式输出纯文本（不渲染 Markdown），终端显示更简洁。
+
+ -- Kriemseeley <your-email@example.com>  Thu, 27 Feb 2026 00:00:00 +0800
+
 explain-tool (1.0.0-1) stable; urgency=low
 
   * Initial release.
