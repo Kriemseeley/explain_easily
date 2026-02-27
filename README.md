@@ -21,14 +21,36 @@
 
 ## 快速安装
 
+### 方式一：apt 安装（推荐，自动更新）
+
 ```bash
-git clone <repo-url> explain-tool
-cd explain-tool
+# 1. 添加 GPG 公钥
+curl -fsSL https://Kriemseeley.github.io/explain_easily/explain-tool.gpg.key \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/explain-tool.gpg
+
+# 2. 添加软件源
+echo "deb [signed-by=/etc/apt/keyrings/explain-tool.gpg arch=all] \
+https://Kriemseeley.github.io/explain_easily stable main" \
+    | sudo tee /etc/apt/sources.list.d/explain-tool.list
+
+# 3. 安装
+sudo apt update && sudo apt install explain-tool
+```
+
+卸载：`sudo apt remove explain-tool`
+
+---
+
+### 方式二：一键脚本安装
+
+```bash
+git clone https://github.com/Kriemseeley/explain_easily.git
+cd explain_easily
 chmod +x install.sh
 ./install.sh
 ```
 
-或手动安装：
+### 方式三：手动安装
 
 ```bash
 pip3 install rich

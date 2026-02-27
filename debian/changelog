@@ -1,0 +1,9 @@
+explain-tool (1.0.0-1) stable; urgency=low
+
+  * Initial release.
+  * Dual-perspective command explanation: security + general.
+  * Supports OpenAI / DeepSeek / Ollama backends.
+  * Bilingual output: zh (Chinese) and en (English).
+  * Local MD5 cache to reduce API usage.
+
+ -- Kriemseeley <your-email@example.com>  Thu, 27 Feb 2026 00:00:00 +0800
